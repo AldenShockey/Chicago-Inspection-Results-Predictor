@@ -1,0 +1,58 @@
+df = pd.read_csv(url, parse_dates=['Inspection Date'], index_col='Inspection Date')
+leaky_col = 'Serious Violations Found'
+df['License #'].nunique()
+
+def wrangle(df):
+  df.drop(columns=leaky_col, inplace=True)
+  cutoff = 500
+  drop_col = [col for col in df.select_dtypes('object').columns
+              if df[col].nunique() > cutoff]
+
+  df.drop(columns=drop_col, inplace=True)
+
+  drop_one = [col for col in df.select_dtypes('object').columns
+              if df[col].nunique() == 1]
+  df.drop(columns=drop_one, inplace=True)
+  
+  drop_unique = [col for col in df.columns
+                 if df[col].nunique() == len(df[col])]
+  df.drop(columns=drop_unique, inplace=True)
+  df.drop(columns=['License #'], inplace=True)
+  return df
+
+df = wrangle(df)
+
+target = 'Fail'
+y = df[target]
+X = df.drop(columns=target)
+
+mask = X.index < '2017'
+
+X_train = X.loc[mask]
+y_train = y.loc[mask]
+X_val = X.loc[~mask]
+y_val = y.loc[~mask]
+
+baseline_acc = y_train.value_counts(normalize=True).max()
+print('Baseline accuracy:', baseline_acc)
+
+model_bag = make_pipeline(
+    OrdinalEncoder(),
+    SimpleImputer(),
+    RandomForestClassifier(n_estimators=50, n_jobs=-1),
+)
+
+model_bag.fit(X_train, y_train);
+
+model_boost = make_pipeline(
+    OrdinalEncoder(),
+    SimpleImputer(),
+    GradientBoostingClassifier(n_estimators=50),
+)
+
+model_boost.fit(X_train, y_train);
+
+perm = permutation_importance(model_boost, X_val, y_val)
+perm_dict = {'imp_mean':perm['importances_mean'],'imp_std':perm['importances_std']}
+permutation_importances = pd.DataFrame(perm_dict, index=X_val.columns).sort_values('imp_mean')
+permutation_importances
